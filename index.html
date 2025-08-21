@@ -1,1 +1,404 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>To‑Do List | acewager</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+<header class="site-header">
+  <div class="container header-inner">
+    <h1><span class="accent">{</span> acewager <span class="accent">}</span> / To‑Do List</h1>
+    <nav>
+      <a href="index.html#projects">All Projects</a>
+      <a href="index.html#resume">Resume</a>
+      <a href="https://github.com/acewager" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="container layout">
+    <section class="panel" aria-labelledby="add-task-heading">
+      <h3 id="add-task-heading">Add / Edit Task</h3>
+      <form class="todo-form" id="todoForm" novalidate>
+        <input type="hidden" id="taskId" />
+        <label for="title">Title</label>
+        <input id="title" name="title" type="text" maxlength="120" placeholder="e.g. Ship portfolio page" required />
+
+        <label for="description">Description</label>
+        <textarea id="description" name="description" placeholder="Details, steps, notes..."></textarea>
+
+        <div class="row">
+          <div>
+            <label for="dueDate">Due Date</label>
+            <input id="dueDate" name="dueDate" type="date" />
+          </div>
+          <div>
+            <label for="priority">Priority</label>
+            <select id="priority" name="priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="tags">Tags (comma separated)</label>
+        <input id="tags" name="tags" type="text" placeholder="frontend, infra, idea" />
+
+        <div class="actions">
+          <button type="submit" class="button primary" id="saveBtn">Add Task</button>
+          <button type="button" id="resetBtn" class="button secondary" title="Clear form">Reset</button>
+        </div>
+      </form>
+    </section>
+
+    <section>
+      <div class="panel" aria-labelledby="filters-heading">
+        <h3 id="filters-heading">Filters & View</h3>
+        <div class="filters" id="filters">
+          <div class="field">
+            <label for="search">Search</label>
+            <input type="text" id="search" placeholder="Title / description" />
+          </div>
+          <div class="field">
+            <label for="filterStatus">Status</label>
+            <select id="filterStatus">
+              <option value="all">All</option>
+              <option value="open" selected>Open</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="filterPriority">Priority</label>
+            <select id="filterPriority">
+              <option value="all" selected>All</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sortBy">Sort By</label>
+            <select id="sortBy">
+              <option value="created_desc" selected>Created (newest)</option>
+              <option value="created_asc">Created (oldest)</option>
+              <option value="due_asc">Due Date (soonest)</option>
+              <option value="due_desc">Due Date (latest)</option>
+              <option value="priority">Priority</option>
+              <option value="title">Title (A→Z)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="filterTag">Tag</label>
+            <select id="filterTag">
+              <option value="all" selected>All</option>
+            </select>
+          </div>
+        </div>
+        <div class="task-stats" id="taskStats" aria-live="polite"></div>
+      </div>
+
+      <div id="tasksContainer" class="tasks" aria-live="polite" aria-label="Task list"></div>
+      <div id="emptyState" class="empty" hidden>No tasks yet. Add your first task on the left.</div>
+    </section>
+  </div>
+</main>
+<footer class="site-footer">
+  <div class="container">
+    <p>Local only – data stored in your browser (localStorage). 
+      <button id="exportBtn" class="button secondary" style="padding:0 .5rem;">Export</button> · 
+      <button id="importBtn" class="button secondary" style="padding:0 .5rem;">Import</button> · 
+      <button id="clearAllBtn" class="button secondary" style="color:var(--danger);padding:0 .5rem;">Clear All</button>
+    </p>
+  </div>
+</footer>
+<script>
+(function(){
+// ... All original JavaScript from todo_app.html ...
+// Due to length, copy the script section from the attached todo_app.html context.
+const storeKey = 'todo.tasks.v1';
+const form = document.getElementById('todoForm');
+const taskIdEl = document.getElementById('taskId');
+const titleEl = document.getElementById('title');
+const descriptionEl = document.getElementById('description');
+const dueDateEl = document.getElementById('dueDate');
+const priorityEl = document.getElementById('priority');
+const tagsEl = document.getElementById('tags');
+const resetBtn = document.getElementById('resetBtn');
+const saveBtn = document.getElementById('saveBtn');
+const tasksContainer = document.getElementById('tasksContainer');
+const emptyState = document.getElementById('emptyState');
+const statsEl = document.getElementById('taskStats');
+const searchEl = document.getElementById('search');
+const filterStatusEl = document.getElementById('filterStatus');
+const filterPriorityEl = document.getElementById('filterPriority');
+const filterTagEl = document.getElementById('filterTag');
+const sortByEl = document.getElementById('sortBy');
+const exportBtn = document.getElementById('exportBtn');
+const importBtn = document.getElementById('importBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
+let tasks = load();
+function load(){
+  try { return JSON.parse(localStorage.getItem(storeKey)) || []; } catch(e){ return []; }
+}
+function persist(){ localStorage.setItem(storeKey, JSON.stringify(tasks)); }
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function resetForm(){
+  taskIdEl.value = '';
+  form.reset();
+  saveBtn.textContent = 'Add Task';
+  titleEl.focus();
+}
+function parseTags(str){
+  return [...new Set(str.split(',').map(t=>t.trim()).filter(Boolean).map(t=>t.toLowerCase()))];
+}
+function addTask(data){
+  tasks.unshift({
+    id: uid(),
+    title: data.title.trim(),
+    description: data.description.trim(),
+    dueDate: data.dueDate || '',
+    priority: data.priority,
+    tags: parseTags(data.tags),
+    status: 'open',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  });
+  persist();
+  render();
+  resetForm();
+}
+function updateTask(id, data){
+  const t = tasks.find(t=>t.id===id);
+  if(!t) return;
+  t.title = data.title.trim();
+  t.description = data.description.trim();
+  t.dueDate = data.dueDate || '';
+  t.priority = data.priority;
+  t.tags = parseTags(data.tags);
+  t.updatedAt = Date.now();
+  persist();
+  render();
+  resetForm();
+}
+function deleteTask(id){
+  tasks = tasks.filter(t=>t.id!==id);
+  persist();
+  render();
+}
+function toggleComplete(id){
+  const t = tasks.find(t=>t.id===id);
+  if(!t) return;
+  t.status = t.status === 'completed' ? 'open' : 'completed';
+  t.updatedAt = Date.now();
+  persist();
+  render();
+}
+function humanDate(d){ if(!d) return ''; const dt = new Date(d); return dt.toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
+function relTime(ts) {
+  const diff = Date.now() - ts;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return sec + 's';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + 'm';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + 'h';
+  const day = Math.floor(hr / 24);
+  if (day < 30) return day + 'd';
+  const mon = Math.floor(day / 30);
+  if (mon < 12) return mon + 'mo';
+  return Math.floor(mon / 12) + 'y';
+}
+function applyFilters(list){
+  const q = searchEl.value.toLowerCase();
+  const fs = filterStatusEl.value;
+  const fp = filterPriorityEl.value;
+  const ft = filterTagEl.value;
+  let out = list.filter(t=>{
+    if(fs!=='all' && t.status!==fs) return false;
+    if(fp!=='all' && t.priority!==fp) return false;
+    if(ft!=='all' && !t.tags.includes(ft)) return false;
+    if(q){
+      if(!(t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q))) return false;
+    }
+    return true;
+  });
+  switch(sortByEl.value){
+    case 'created_asc': out.sort((a,b)=>a.createdAt-b.createdAt); break;
+    case 'created_desc': out.sort((a,b)=>b.createdAt-a.createdAt); break;
+    case 'due_asc': 
+      out.sort((a, b) => {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate) - new Date(b.dueDate);
+      }); 
+      break;
+    case 'due_desc': 
+      out.sort((a, b) => {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(b.dueDate) - new Date(a.dueDate);
+      }); 
+      break;
+    case 'priority': {
+      const order = {high:0, medium:1, low:2}; out.sort((a,b)=>(order[a.priority] ?? 3)-(order[b.priority] ?? 3)); break;
+    }
+    case 'title': out.sort((a,b)=>a.title.localeCompare(b.title)); break;
+  }
+  return out;
+}
+function renderTagsSelect(){
+  const tags = [...new Set(tasks.flatMap(t=>t.tags))].sort();
+  const current = filterTagEl.value;
+  filterTagEl.innerHTML = '<option value="all">All</option>' + tags.map(t=>`<option value="${t}">${t}</option>`).join('');
+  if([...filterTagEl.options].some(o=>o.value===current)) filterTagEl.value=current;
+}
+function renderStats(filtered){
+  const open = tasks.filter(t=>t.status==='open').length;
+  const done = tasks.filter(t=>t.status==='completed').length;
+  const total = tasks.length;
+  statsEl.textContent = `${total} total · ${open} open · ${done} completed · showing ${filtered.length}`;
+}
+function render(){
+  renderTagsSelect();
+  const filtered = applyFilters(tasks);
+  renderStats(filtered);
+  tasksContainer.innerHTML='';
+  if(!filtered.length){ emptyState.hidden=false; } else { emptyState.hidden=true; }
+  const now = new Date().toISOString().slice(0,10);
+  filtered.forEach(t=>{
+    const div = document.createElement('div');
+    div.className='task';
+    if(t.status==='completed') div.classList.add('completed');
+    if(t.dueDate && t.dueDate < now && t.status!=='completed') div.classList.add('overdue');
+    div.dataset.id=t.id;
+    const tagsHtml = t.tags.map(tag=>`<span class="tag">${tag}</span>`).join('');
+    const dueLabel = t.dueDate ? `Due ${humanDate(t.dueDate)}` : '';
+    const overdueLabel = (t.dueDate && t.dueDate < now && t.status!=='completed') ? '<span style="color:var(--danger);font-weight:600;">OVERDUE</span>' : '';
+    div.innerHTML = `
+      <header>
+        <h4>${escapeHtml(t.title)}</h4>
+        <div class="meta">
+          <span class="badge pri-${t.priority}">${t.priority}</span>
+          <span class="badge status-${t.status}">${t.status}</span>
+        </div>
+      </header>
+      <div class="desc">${escapeHtml(t.description)}</div>
+      <div class="tag-list">${tagsHtml}</div>
+      <div class="task-footer">
+        <div class="meta">
+          ${dueLabel?`<span>${dueLabel}</span>`:''}
+          ${overdueLabel}
+          <span>Created ${relTime(t.createdAt)} ago</span>
+          ${t.updatedAt!==t.createdAt?`<span>Updated ${relTime(t.updatedAt)} ago</span>`:''}
+        </div>
+        <div class="task-buttons">
+          <button data-action="toggle" title="Toggle Complete">${t.status==='completed'?'Reopen':'Done'}</button>
+          <button data-action="edit" title="Edit Task">Edit</button>
+          <button data-action="del" class="danger" title="Delete Task">Del</button>
+        </div>
+      </div>`;
+    tasksContainer.appendChild(div);
+  });
+}
+function escapeHtml(str){ return str.replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c])); }
+form.addEventListener('submit', e=>{
+  e.preventDefault();
+  const data = {
+    title: titleEl.value,
+    description: descriptionEl.value,
+    dueDate: dueDateEl.value,
+    priority: priorityEl.value,
+    tags: tagsEl.value
+  };
+  if(!data.title.trim()) { titleEl.focus(); return; }
+  const editId = taskIdEl.value;
+  if(editId) updateTask(editId, data); else addTask(data);
+});
+resetBtn.addEventListener('click', e=>{ resetForm(); });
+tasksContainer.addEventListener('click', e=>{
+  const btn = e.target.closest('button'); 
+  if(!btn) return; 
+  const action = btn.dataset.action; 
+  const taskDiv = btn.closest('.task'); 
+  if(!taskDiv) return; 
+  const id = taskDiv.dataset.id;
+  if(action==='del'){ if(confirm('Delete task?')) deleteTask(id); }
+  else if(action==='toggle'){ toggleComplete(id); }
+  else if(action==='edit'){ startEdit(id); }
+});
+function startEdit(id){
+  const t = tasks.find(t=>t.id===id); if(!t) return;
+  taskIdEl.value = t.id;
+  titleEl.value = t.title;
+  descriptionEl.value = t.description;
+  dueDateEl.value = t.dueDate;
+  priorityEl.value = t.priority;
+  tagsEl.value = t.tags.join(', ');
+  saveBtn.textContent = 'Update Task';
+  titleEl.focus();
+}
+[searchEl, filterStatusEl, filterPriorityEl, filterTagEl, sortByEl].forEach(el=>{
+  el.addEventListener('input', render);
+  el.addEventListener('change', render);
+});
+// Data import/export
+exportBtn.addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(tasks,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download='tasks-export.json'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+});
+importBtn.addEventListener('click', ()=>{
+  const inp = document.createElement('input'); inp.type='file'; inp.accept='application/json';
+  inp.onchange = ()=>{
+    const file = inp.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try {
+        const data = JSON.parse(reader.result);
+        if(!Array.isArray(data)) throw new Error('Invalid file');
+        const existingIds = new Set(tasks.map(t=>t.id));
+        data.forEach(d=>{ if(d && d.title && !existingIds.has(d.id||'')){ tasks.push({
+          id: d.id || uid(),
+          title: String(d.title).slice(0,120),
+          description: String(d.description||''),
+          dueDate: d.dueDate || '',
+          priority: ['low','medium','high'].includes(d.priority)?d.priority:'medium',
+          tags: Array.isArray(d.tags)?d.tags.map(t=>String(t).toLowerCase()):[],
+          status: d.status==='completed'?'completed':'open',
+          createdAt: typeof d.createdAt==='number'?d.createdAt:Date.now(),
+          updatedAt: Date.now()
+        }); }});
+        persist();
+        render();
+        alert('Import complete.');
+      } catch(err){ alert('Import failed: '+ err.message); }
+    };
+    reader.readAsText(file);
+  };
+  inp.click();
+});
+clearAllBtn.addEventListener('click', ()=>{
+  if(!tasks.length) return;
+  if(confirm('This will permanently remove all tasks stored in this browser. Continue?')){
+    tasks=[]; persist(); render();
+  }
+});
+// Keyboard shortcuts
+document.addEventListener('keydown', e=>{
+  if(e.key==='n' && (e.metaKey||e.ctrlKey)) { e.preventDefault(); resetForm(); }
+  if(e.key==='f' && (e.metaKey||e.ctrlKey)) { e.preventDefault(); searchEl.focus(); }
+});
+render();
+})();
+</script>
+</body>
+</html>
